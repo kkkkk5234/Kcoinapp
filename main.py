@@ -1,167 +1,146 @@
-import sys, requests, datetime
-from PySide6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout,
-    QLabel, QLineEdit, QPushButton, QMessageBox
-)
-from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtCore import QUrl, Qt, QTimer
+import tkinter as tk
+from tkinter import messagebox
+import requests, webbrowser, time, os, json, datetime
 
-# ================= CONFIG =================
+# ===== CONFIG =====
+RAW_KEYS_URL = "https://raw.githubusercontent.com/kkkkk5234/Kcoinapp/main/Key.txt"
+GITHUB_API = "https://api.github.com/repos/kkkkk5234/Kcoinapp/contents/Key.txt"
+RAW_KEYWEB_URL = "https://raw.githubusercontent.com/kkkkk5234/Kcoinapp/main/Keyweb.txt"
+GITHUB_KEYWEB_API = "https://api.github.com/repos/kkkkk5234/Kcoinapp/contents/Keyweb.txt"
+GITHUB_TOKEN = "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"
 
 LINK4M_API = "https://link4m.co/api-shorten/v2"
-LINK4M_API_KEY = "68ee653ab963c96e472dd8c1"
+LINK4M_KEY = "68ee653ab963c96e472dd8c1"
 
-TARGET_KEY_WEB = "https://kkkkk5234.github.io/Kcoinapp/key.html"
-GITHUB_KEY_RAW = "https://raw.githubusercontent.com/kkkkk5234/Kcoinapp/main/Key.txt"
-MAIN_WEB = "https://kkkkk5234.github.io/Kcoinapp/main.html"
+LOCAL_FILE = "key.json"
 
-KEY_DOMAIN = "https://kkkkk5234.github.io/Kcoinapp/key.html"
-KEY_ELEMENT_ID = "key"
-KEY_QUERY_NAME = "key"
+# ===== UTILS =====
+def load_used():
+    if os.path.exists(LOCAL_FILE):
+        return json.load(open(LOCAL_FILE))
+    return {}
 
-# ================= UTILS =================
+def save_used(data):
+    json.dump(data, open(LOCAL_FILE, "w"))
 
-def get_link4m():
-    api = f"{LINK4M_API}?api={LINK4M_API_KEY}&url={TARGET_KEY_WEB}"
-    r = requests.get(api, timeout=10)
-    return r.json().get("shortenedUrl")
+def fetch_keys():
+    return requests.get(RAW_KEYS_URL).text.splitlines()
 
-def check_key(key):
-    today = str(datetime.date.today())
-    raw = requests.get(GITHUB_KEY_RAW, timeout=10).text
+def delete_key_from_github(key):
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    r = requests.get(GITHUB_API, headers=headers).json()
+    sha = r["sha"]
+    content = requests.get(RAW_KEYS_URL).text
+    new_content = content.replace(key + "\n", "")
 
-    for line in raw.splitlines():
-        try:
-            k, date = line.split("|")
-            if k == key and date >= today:
-                return True
-        except:
-            pass
-    return False
+    data = {
+        "message": "Remove expired key",
+        "content": new_content.encode("utf-8").decode("utf-8"),
+        "sha": sha
+    }
+    requests.put(GITHUB_API, headers=headers, json=data)
 
-# ================= APP =================
+# ===== MAIN LOGIC =====
+def verify_key(key):
+    used = load_used()
+    if key in used:
+        return False, "Key đã hết hạn"
 
-class App(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("Kcoin App")
-        self.resize(420, 220)
+    if key not in fetch_keys():
+        return False, "Key không hợp lệ"
 
-        layout = QVBoxLayout(self)
+    now = time.time()
+    if key.startswith("KEY_FREE"):
+        used[key] = now + 7 * 3600
+    elif key.startswith("KEY_VIP"):
+        used[key] = now + 7 * 86400
+    else:
+        return False, "Sai định dạng key"
 
-        self.label = QLabel("Nhập key để mở app")
-        self.input = QLineEdit()
-        self.input.setPlaceholderText("Nhập key tại đây")
+    save_used(used)
+    return True, "OK"
 
-        self.btn_check = QPushButton("Xác nhận key")
-        self.btn_free = QPushButton("Key Free")
-        self.btn_vip = QPushButton("Key VIP")
+def monitor_expire(key, root):
+    used = load_used()
+    while time.time() < used[key]:
+        time.sleep(5)
+    messagebox.showwarning("Hết hạn", "Key đã hết hạn")
+    delete_key_from_github(key)
+    root.destroy()
 
-        layout.addWidget(self.label)
-        layout.addWidget(self.input)
-        layout.addWidget(self.btn_check)
-        layout.addWidget(self.btn_free)
-        layout.addWidget(self.btn_vip)
+# ===== UI =====
+def start_app():
+    key = entry.get().strip()
+    ok, msg = verify_key(key)
+    if not ok:
+        messagebox.showerror("Lỗi", msg)
+        return
+    messagebox.showinfo("Thành công", "Vào app")
+    root.withdraw()
+    monitor_expire(key, root)
 
-        self.btn_free.clicked.connect(self.open_key_free)
-        self.btn_vip.clicked.connect(self.vip_info)
-        self.btn_check.clicked.connect(self.verify_key)
+def get_free_key():
+    r = requests.get(LINK4M_API, params={
+        "api": LINK4M_KEY,
+        "url": "https://kkkkk5234.github.io/Kcoinapp/key.html"
+    }).json()
 
-        self.setStyleSheet("""
-        QWidget { background:#121212; color:white; font-size:14px; }
-        QLineEdit { padding:10px; border-radius:10px; background:#1f1f1f; }
-        QPushButton { padding:10px; border-radius:10px; background:#2979ff; }
-        QPushButton:hover { background:#448aff; }
-        """)
+    short_link = r.get("shortenedUrl")
+    if not short_link:
+        messagebox.showerror("Lỗi", "Không lấy được link")
+        return
 
-    # ================= KEY FREE =================
+    keyweb = generate_keyweb()
+    upload_keyweb_to_github(keyweb)
 
-    def open_key_free(self):
-        link = get_link4m()
-        if not link:
-            QMessageBox.warning(self, "Lỗi", "Không lấy được link")
-            return
+    messagebox.showinfo(
+        "Key Free",
+        f"Link4M:\n{short_link}\n\nKey truy cập:\n{keyweb}"
+    )
 
-        self.web = QWebEngineView()
-        self.web.setContextMenuPolicy(Qt.NoContextMenu)
-        self.web.settings().setAttribute(
-            self.web.settings().DeveloperExtrasEnabled, False
-        )
+def upload_keyweb_to_github(key):
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json"
+    }
 
-        self.web.urlChanged.connect(self.on_url_change)
-        self.web.load(QUrl(link))
-        self.web.show()
-        self.hide()
+    # lấy file hiện tại (nếu có)
+    r = requests.get(GITHUB_KEYWEB_API, headers=headers)
+    if r.status_code == 200:
+        data = r.json()
+        sha = data["sha"]
+        content = base64.b64decode(data["content"]).decode()
+        content += f"\n{key}"
+    else:
+        sha = None
+        content = key
 
-    def on_url_change(self, url: QUrl):
-        url_str = url.toString()
+    payload = {
+        "message": "Add KEY_WEB",
+        "content": base64.b64encode(content.encode()).decode(),
+    }
+    if sha:
+        payload["sha"] = sha
 
-        if f"{KEY_QUERY_NAME}=" in url_str:
-            query = QUrl(url_str).query()
-            params = dict(x.split("=") for x in query.split("&") if "=" in x)
-            self.finish_get_key(params.get(KEY_QUERY_NAME, ""))
-            return
+    requests.put(GITHUB_KEYWEB_API, headers=headers, json=payload)
 
-        if KEY_DOMAIN in url_str:
-            self.start_js_polling()
+def generate_keyweb():
+    return "KEY_WEB" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
-    def start_js_polling(self):
-        if hasattr(self, "key_timer"):
-            return
-        self.key_timer = QTimer(self)
-        self.key_timer.timeout.connect(self.poll_key_from_dom)
-        self.key_timer.start(500)
+def vip_info():
+    messagebox.showinfo("Key VIP", "Mua key vip theo ngày tháng năm\nLiên hệ 0854533557")
 
-    def poll_key_from_dom(self):
-        js = f"""
-        (function() {{
-            let el = document.getElementById("{KEY_ELEMENT_ID}");
-            if (el) return el.innerText || el.value;
-            return "";
-        }})();
-        """
-        self.web.page().runJavaScript(js, self.on_js_key_result)
+root = tk.Tk()
+root.title("Nhập Key")
 
-    def on_js_key_result(self, key):
-        if key and len(key) > 3:
-            self.key_timer.stop()
-            self.finish_get_key(key)
+entry = tk.Entry(root, width=30)
+entry.pack(pady=10)
 
-    def finish_get_key(self, key):
-        if key:
-            self.web.close()
-            self.input.setText(key.strip())
-            self.show()
+tk.Button(root, text="Vào app", command=start_app).pack()
+tk.Button(root, text="Key Free", command=get_free_key).pack(pady=5)
+tk.Button(root, text="Key VIP", command=vip_info).pack()
 
-    # ================= CHECK KEY =================
-
-    def verify_key(self):
-        if check_key(self.input.text().strip()):
-            self.open_main()
-        else:
-            QMessageBox.warning(self, "Sai key", "Key không hợp lệ hoặc đã hết hạn")
-
-    # ================= MAIN WEB =================
-
-    def open_main(self):
-        self.main = QWebEngineView()
-        self.main.setContextMenuPolicy(Qt.NoContextMenu)
-        self.main.settings().setAttribute(
-            self.main.settings().DeveloperExtrasEnabled, False
-        )
-        self.main.load(QUrl(MAIN_WEB))
-        self.main.show()
-        self.close()
-
-    def vip_info(self):
-        QMessageBox.information(self, "Key VIP",
-            "Mua key vip liên hệ 0854533557"
-        )
-
-# ================= RUN =================
-
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    w = App()
-    w.show()
-    sys.exit(app.exec())
+root.mainloop()

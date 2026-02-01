@@ -1,26 +1,41 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Key Free Kcoin</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    body {
-      background: radial-gradient(circle at top left, #2b2a72, transparent 40%),
-                  radial-gradient(circle at bottom right, #6b4cff, transparent 40%),
-                  linear-gradient(to bottom, #020111, #02102f);
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Key Free Kcoin</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+body{
+  background: radial-gradient(circle at top left,#2b2a72,transparent 40%),
+              radial-gradient(circle at bottom right,#6b4cff,transparent 40%),
+              linear-gradient(to bottom,#020111,#02102f);
+}
+</style>
 </head>
 
 <body class="min-h-screen flex items-center justify-center text-white">
 
-<div class="w-full max-w-xl p-8 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 shadow-2xl">
+<div id="loginBox" class="w-full max-w-md p-8 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 shadow-2xl">
+  <h1 class="text-xl font-bold mb-4">Nhập KEY WEB</h1>
+
+  <input id="keywebInput" class="w-full p-3 rounded-lg text-black mb-4"
+         placeholder="KEY_WEBxxxxxx">
+
+  <button id="checkKeyweb"
+    class="w-full py-3 rounded-lg bg-gradient-to-r from-purple-500 to-cyan-400 font-semibold">
+    Xác nhận
+  </button>
+
+  <p id="loginMsg" class="mt-4 text-red-400 text-sm"></p>
+</div>
+
+<!-- ===== LẤY KEY FREE ===== -->
+<div id="keyBoxMain" class="hidden w-full max-w-xl p-8 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 shadow-2xl">
   <h1 class="text-2xl font-bold mb-2">Key Free hôm nay</h1>
   <p class="text-sm text-slate-300 mb-4">Key có hiệu lực 7 giờ</p>
 
-  <div id="key" class="p-4 rounded-lg bg-white/10 font-mono text-lg mb-4">
+  <div id="keyBox" class="p-4 rounded-lg bg-white/10 font-mono text-lg mb-4">
     Chưa có key
   </div>
 
@@ -28,107 +43,83 @@
     class="w-full py-3 rounded-lg font-semibold bg-gradient-to-r from-purple-500 to-cyan-400">
     Lấy Key
   </button>
-
-  <div id="timer" class="mt-4 text-center text-cyan-300 hidden"></div>
 </div>
+
 <script>
-const RAW_KEY_URL = "https://raw.githubusercontent.com/kkkkk5234/Kcoinapp/main/Key.txt";
-const keyBox = document.getElementById("key");
-const btn = document.getElementById("getKey");
-const timerBox = document.getElementById("timer");
+const RAW_KEYWEB = "https://raw.githubusercontent.com/kkkkk5234/Kcoinapp/main/keyweb.txt";
+const RAW_KEYFREE = "https://raw.githubusercontent.com/kkkkk5234/Kcoinapp/main/Key.txt";
 
-const KEY_TIME = 7 * 60 * 60 * 1000; // 7 giờ
-let countdownInterval = null;
+const loginBox = document.getElementById("loginBox");
+const keyMain = document.getElementById("keyBoxMain");
 
-// ====== TIMER ======
-function startTimer(expireTime) {
-  timerBox.classList.remove("hidden");
+const keywebInput = document.getElementById("keywebInput");
+const loginMsg = document.getElementById("loginMsg");
+const btnCheck = document.getElementById("checkKeyweb");
 
-  countdownInterval = setInterval(() => {
-    const diff = expireTime - Date.now();
+const keyBox = document.getElementById("keyBox");
+const btnGet = document.getElementById("getKey");
 
-    if (diff <= 0) {
-      clearInterval(countdownInterval);
-      localStorage.removeItem("key_value");
-      localStorage.removeItem("key_expire");
-      keyBox.textContent = "Bạn có thể lấy key mới";
-      timerBox.textContent = "";
-      btn.disabled = false;
-      btn.textContent = "Lấy Key";
-      btn.classList.remove("opacity-60");
-      return;
-    }
-
-    const h = Math.floor(diff / 3600000);
-    const m = Math.floor((diff % 3600000) / 60000);
-    const s = Math.floor((diff % 60000) / 1000);
-    timerBox.textContent = `⏳ Còn lại: ${h}h ${m}m ${s}s`;
-  }, 1000);
-}
-
-// ====== LOAD LẠI ======
-const savedKey = localStorage.getItem("key_value");
-const savedExpire = localStorage.getItem("key_expire");
-
-if (savedKey && savedExpire && Date.now() < savedExpire) {
-  keyBox.textContent = savedKey;
-  btn.disabled = true;
-  btn.textContent = "Đang dùng key";
-  btn.classList.add("opacity-60");
-  startTimer(parseInt(savedExpire));
-}
-
-// ====== LẤY DANH SÁCH KEY ĐÃ DÙNG ======
-function getUsedKeys() {
-  return JSON.parse(localStorage.getItem("used_keys") || "[]");
-}
-
-function saveUsedKey(key) {
-  const used = getUsedKeys();
-  if (!used.includes(key)) {
-    used.push(key);
-    localStorage.setItem("used_keys", JSON.stringify(used));
-  }
-}
-
-// ====== FETCH KEY ======
-btn.onclick = async () => {
-  btn.disabled = true;
+// ===== KEY WEB LOGIN =====
+btnCheck.onclick = async () => {
+  const keyweb = keywebInput.value.trim();
+  if (!keyweb) return;
 
   try {
-    const res = await fetch(RAW_KEY_URL + "?t=" + Date.now());
+    const res = await fetch(RAW_KEYWEB + "?t=" + Date.now());
     const text = await res.text();
 
-    const usedKeys = getUsedKeys();
-
-    const keys = text
-      .split("\n")
-      .map(k => k.trim())
-      .filter(k => k.startsWith("KEY_FREE"))
-      .filter(k => !usedKeys.includes(k)); // ❗ bỏ key đã dùng
-
-    if (keys.length === 0) {
-      keyBox.textContent = "Hết key free, vui lòng quay lại sau";
-      btn.disabled = false;
+    const keys = text.split("\n").map(k => k.trim());
+    if (!keys.includes(keyweb)) {
+      loginMsg.textContent = "KEY WEB không hợp lệ";
       return;
     }
 
-    const key = keys[0]; // lấy từ trên xuống
-    const expireTime = Date.now() + KEY_TIME;
+    sessionStorage.setItem("keyweb_ok", "1");
+    loginBox.classList.add("hidden");
+    keyMain.classList.remove("hidden");
 
-    saveUsedKey(key); // ✅ đánh dấu đã dùng
-    localStorage.setItem("key_value", key);
-    localStorage.setItem("key_expire", expireTime);
+  } catch {
+    loginMsg.textContent = "Lỗi kết nối";
+  }
+};
+
+// ===== LẤY KEY FREE =====
+btnGet.onclick = async () => {
+  btnGet.disabled = true;
+
+  try {
+    const res = await fetch(RAW_KEYFREE + "?t=" + Date.now());
+    const text = await res.text();
+
+    const used = JSON.parse(localStorage.getItem("used_free_keys") || "[]");
+
+    const keys = text.split("\n")
+      .map(k => k.trim())
+      .filter(k => k.startsWith("KEY_FREE"))
+      .filter(k => !k.endsWith("|hethan"))
+      .filter(k => !used.includes(k));
+
+    if (keys.length === 0) {
+      keyBox.textContent = "Hết key free";
+      btnGet.disabled = false;
+      return;
+    }
+
+    const key = keys[0];
+    used.push(key);
+    localStorage.setItem("used_free_keys", JSON.stringify(used));
 
     keyBox.textContent = key;
-    btn.textContent = "Đang dùng key";
-    btn.classList.add("opacity-60");
 
-    startTimer(expireTime);
+    // kick về nhập key web sau 3s
+    setTimeout(() => {
+      sessionStorage.clear();
+      location.reload();
+    }, 3000);
 
-  } catch (e) {
+  } catch {
     keyBox.textContent = "Lỗi lấy key";
-    btn.disabled = false;
+    btnGet.disabled = false;
   }
 };
 </script>
